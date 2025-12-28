@@ -28,8 +28,7 @@ st.set_page_config(
 )
 
 # --- TÍTULO Y DESCRIPCIÓN ---
-st.image("https://raw.githubusercontent.com/openai/chatgpt-retrieval-plugin/main/docs/images/streamlit-logo-primary-colormark-darktext.png", width=120)
-st.title("🎯 Generador de Equipos")
+st.title("Generador de Equipos")
 st.markdown("""
 Esta herramienta crea equipos balanceados usando el algoritmo **"Snake Draft Ponderado"**.
 Toma en cuenta el **K/D Ratio** (habilidad) y el **Nivel** (experiencia).

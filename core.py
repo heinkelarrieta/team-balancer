@@ -113,6 +113,9 @@ def balancear_equipos_greedy_swaps(lista_jugadores: Sequence[Player], n_jugadore
         return statistics.pvariance(sums) if len(sums) > 0 else 0.0
 
     best_var = variance_of_sums(equipos_sums)
+    # Si solo hay un equipo, no hay swaps posibles
+    if num_equipos < 2:
+        return equipos, reservas
 
     # Intentar mejorar por swaps aleatorios
     for _ in range(max_iters):
