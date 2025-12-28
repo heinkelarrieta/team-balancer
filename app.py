@@ -1,107 +1,42 @@
 import streamlit as st
 import pandas as pd
-import os
-import tempfile
 from typing import List, Dict, Any, cast, Optional, Sequence
+import streamlit.components.v1 as components
+import statistics
 
-# --- BLOQUE DE BASE DE DATOS ---
-DB_FILE = "jugadores_db.csv"
-
-
-def _sanitizar_nombre(nombre: Optional[str]) -> str:
-    """Normaliza el gamertag: trim, colapsa espacios y limita longitud."""
-    if not isinstance(nombre, str):
-        return ""
-    # Trim y colapsar espacios múltiples
-    s = " ".join(nombre.strip().split())
-    # Limitar longitud razonable
-    return s[:48]
+# Importar funciones y utilidades desde el módulo core (lógica separada)
+from core import (
+    _sanitizar_nombre,
+    _jugador_existe,
+    cargar_datos,
+    guardar_datos,
+    balancear_equipos_greedy_swaps,
+)
 
 
-def _jugador_existe(lista: Sequence[Dict[str, Any]], gamertag: str) -> bool:
-    """Comprueba existencia por gamertag (case-insensitive)."""
-    if not gamertag:
-        return False
-    gt = gamertag.casefold()
-    return any(str(j.get("Gamertag","") ).casefold() == gt for j in lista)
-
-def cargar_datos():
-    """Carga jugadores desde `DB_FILE` con manejo de errores y validación básica.
-
-    Retorna una lista de diccionarios con las columnas esperadas.
-    En caso de error devuelve lista vacía.
-    """
-    if not os.path.exists(DB_FILE):
-        return []
-
-    try:
-        df = pd.read_csv(DB_FILE)
-    except Exception as e:
-        st.warning(f"No se pudo leer {DB_FILE}: {e}")
-        return []
-
-    # Validar columnas esperadas
-    expected = {"Gamertag", "Nivel", "K/D", "Score"}
-    if not expected.issubset(set(df.columns)):
-        st.warning(f"Archivo {DB_FILE} no contiene las columnas esperadas: {expected}")
-        return []
-
-    # Forzar tipos simples (int/float) cuando sea posible
-    try:
-        df["Nivel"] = pd.to_numeric(df["Nivel"], errors="coerce").fillna(0).astype(int)
-        df["K/D"] = pd.to_numeric(df["K/D"], errors="coerce").fillna(0.0).astype(float)
-        df["Score"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0.0).astype(float)
-    except Exception:
-        # Si hay problemas de conversión, continuamos devolviendo lo leído
-        pass
-
-    return df.to_dict(orient="records")
-
-def guardar_datos(lista_jugadores):
-    """Guarda la lista de jugadores en `DB_FILE` de forma atómica.
-
-    Escribe en un archivo temporal y reemplaza el archivo objetivo para evitar corrupciones parciales.
-    """
-    try:
-        df = pd.DataFrame(lista_jugadores)
-        # Asegurar directorio
-        dirpath = os.path.dirname(DB_FILE) or "."
-        os.makedirs(dirpath, exist_ok=True)
-
-        # Escritura atómica: escribir en temporal y reemplazar
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=dirpath, newline="", suffix=".csv") as tmp:
-            tmp_path = tmp.name
-            df.to_csv(tmp_path, index=False)
-
-        os.replace(tmp_path, DB_FILE)
-    except Exception as e:
-        st.warning(f"No se pudo guardar {DB_FILE}: {e}")
-
-# Reemplaza tu línea de "if 'jugadores' not in st.session_state..." por esta:
+# Inicializar la lista de jugadores en el session state si no existe
 if 'jugadores' not in st.session_state:
-    st.session_state.jugadores = cargar_datos()
+    st.session_state.jugadores = cast(List[Dict[str, Any]], cargar_datos())
+
+
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="CoD Team Balancer",
+    page_title="Team Balancer",
     page_icon="🎯",
     layout="centered"
 )
 
 # --- TÍTULO Y DESCRIPCIÓN ---
-st.title("🎯 Generador de Equipos CoD Mobile")
+st.image("https://raw.githubusercontent.com/openai/chatgpt-retrieval-plugin/main/docs/images/streamlit-logo-primary-colormark-darktext.png", width=120)
+st.title("🎯 Generador de Equipos")
 st.markdown("""
 Esta herramienta crea equipos balanceados usando el algoritmo **"Snake Draft Ponderado"**.
 Toma en cuenta el **K/D Ratio** (habilidad) y el **Nivel** (experiencia).
 """)
 
-# --- INICIALIZAR ESTADO (MEMORIA) ---
-# Los jugadores se cargan desde disco en la inicialización superior.
-
 # --- BARRA LATERAL (ENTRADA DE DATOS) ---
 with st.sidebar:
-    st.header("📝 Registro de Jugador")
-    
     nombre = st.text_input("Gamertag (Nombre)")
     col1, col2 = st.columns(2)
     with col1:
@@ -133,16 +68,50 @@ with st.sidebar:
             }
             st.session_state.jugadores.append(cast(Any, nuevo_jugador))
             # Persistir al disco
-            guardar_datos(st.session_state.jugadores)
+            guardar_datos(cast(Any, st.session_state.jugadores))
             st.success(f"✅ {nombre_limpio} agregado")
 
     st.markdown("---")
-    if st.button("🗑️ Borrar Todos", type="primary"):
-        st.session_state.jugadores = cast(List[Dict[str, Any]], [])
-        # Persistir borrado
-        guardar_datos(st.session_state.jugadores)
-        st.rerun()
+if st.button("🗑️ Borrar Todos", type="primary"):
+    st.session_state.jugadores = cast(List[Dict[str, Any]], [])
+    # Persistir borrado
+    guardar_datos(cast(Any, st.session_state.jugadores))
+    st.rerun()
 
+# Importar desde CSV
+st.header("📝 Registro de Jugador")
+st.markdown("### 📥 Importar jugadores")
+uploaded = st.file_uploader("Subir CSV de jugadores", type=["csv"], help="CSV con columnas: Gamertag,Nivel,K/D,Score")
+import_mode = st.radio("Modo de importación:", ["Reemplazar","Añadir"], index=0)
+if uploaded is not None:
+    try:
+        df_up = pd.read_csv(uploaded)
+        expected = {"Gamertag", "Nivel", "K/D", "Score"}
+        if not expected.issubset(set(df_up.columns)):
+            st.error(f"CSV no contiene columnas requeridas: {expected}")
+        else:
+            # Forzar tipos
+            df_up["Nivel"] = pd.to_numeric(df_up["Nivel"], errors="coerce").fillna(0).astype(int)
+            df_up["K/D"] = pd.to_numeric(df_up["K/D"], errors="coerce").fillna(0.0).astype(float)
+            df_up["Score"] = pd.to_numeric(df_up["Score"], errors="coerce").fillna(0.0).astype(float)
+
+            lista_nueva = df_up.to_dict(orient="records")
+            if import_mode == "Reemplazar":
+                st.session_state.jugadores = lista_nueva
+            else:
+                # Añadir evitando duplicados por Gamertag
+                existing = {j.get('Gamertag','').casefold() for j in st.session_state.jugadores}
+                for j in lista_nueva:
+                    gt = str(j.get('Gamertag','')).casefold()
+                    if gt and gt not in existing:
+                        st.session_state.jugadores.append(cast(Dict[str, Any], j))
+                        existing.add(gt)
+
+            guardar_datos(cast(Any, st.session_state.jugadores))
+            st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
+    except Exception as e:
+        st.error(f"Error al procesar CSV: {e}")
+    
 # --- ÁREA PRINCIPAL ---
 
 # 1. Mostrar lista de jugadores actual
@@ -174,7 +143,7 @@ if len(st.session_state.jugadores) > 0:
 
                 if btn_del:
                     st.session_state.jugadores.pop(idx)
-                    guardar_datos(st.session_state.jugadores)
+                    guardar_datos(cast(Any, st.session_state.jugadores))
                     st.success("Jugador eliminado")
                     getattr(st, "experimental_rerun", lambda: None)()
 
@@ -198,7 +167,7 @@ if len(st.session_state.jugadores) > 0:
                             'Score': round(score, 1)
                         }
                         st.session_state.jugadores[idx] = cast(Any, actualizado)
-                        guardar_datos(st.session_state.jugadores)
+                        guardar_datos(cast(Any, st.session_state.jugadores))
                         st.success("Cambios guardados")
                         getattr(st, "experimental_rerun", lambda: None)()
 else:
@@ -224,41 +193,24 @@ if btn_generar:
     if total_jugadores < n_jugadores * 2:
         st.error(f"⚠️ Necesitas al menos {n_jugadores * 2} jugadores para armar 2 equipos.")
     else:
-        # --- ALGORITMO SNAKE ---
-        # A. Ordenar por Score
-        lista_ordenada = sorted(st.session_state.jugadores, key=lambda x: x['Score'], reverse=True)
-        
-        # B. Crear contenedores
-        num_equipos = total_jugadores // n_jugadores
-        if num_equipos <= 0:
+        # --- ALGORITMO: greedy + swaps (mejora de balance) ---
+        equipos, reservas = balancear_equipos_greedy_swaps(cast(Sequence[Dict[str, Any]], st.session_state.jugadores), n_jugadores, max_iters=2000)
+        num_equipos = len(equipos)
+        if num_equipos == 0:
             st.error("No se pudo determinar el número de equipos. Revisa la configuración.")
             st.stop()
-
-        equipos = [[] for _ in range(num_equipos)]
-        
-        # C. Repartir
-        reservas = []
-        count = 0
-        for i, jugador in enumerate(lista_ordenada):
-            # Si excedemos la capacidad de equipos completos, van a reserva
-            if i >= num_equipos * n_jugadores:
-                reservas.append(jugador)
-                continue
-                
-            indice_equipo = count % num_equipos
-            vuelta = count // num_equipos
-            
-            # Invertir orden en vueltas impares (Snake)
-            if vuelta % 2 == 1:
-                indice_equipo = num_equipos - 1 - indice_equipo
-            
-            equipos[indice_equipo].append(jugador)
-            count += 1
 
         # D. Mostrar Resultados
         st.success("✅ Equipos generados exitosamente")
         
         cols = st.columns(num_equipos)
+        # Métricas globales de balance
+        team_sums = [sum(j.get('Score', 0.0) for j in eq) for eq in equipos]
+        mean_sum = statistics.fmean(team_sums) if team_sums else 0.0
+        stdev_sum = statistics.pstdev(team_sums) if len(team_sums) > 0 else 0.0
+        diff_max_min = (max(team_sums) - min(team_sums)) if team_sums else 0.0
+        st.markdown(f"**Balance — Media poder:** {mean_sum:.1f} · **Desv. poblacional:** {stdev_sum:.2f} · **Max-Min:** {diff_max_min:.1f}")
+
         for i, col in enumerate(cols):
             equipo = equipos[i]
             promedio_score = sum(j.get('Score', 0) for j in equipo)
@@ -282,3 +234,49 @@ if btn_generar:
             st.warning("⚠️ Jugadores en Reserva (No completaron squad):")
             txt_reserva = ", ".join([j['Gamertag'] for j in reservas])
             st.write(txt_reserva)
+
+        # --- Exportar / Copiar ---
+        # Construir CSV de equipos
+        rows = []
+        for t_idx, equipo in enumerate(equipos, start=1):
+            for p in equipo:
+                rows.append({
+                    'Team': t_idx,
+                    'Gamertag': p.get('Gamertag',''),
+                    'Nivel': p.get('Nivel',0),
+                    'K/D': p.get('K/D',0.0),
+                    'Score': p.get('Score',0.0)
+                })
+        # Reservas al final
+        for p in reservas:
+            rows.append({'Team': 'Reserva', 'Gamertag': p.get('Gamertag',''), 'Nivel': p.get('Nivel',0), 'K/D': p.get('K/D',0.0), 'Score': p.get('Score',0.0)})
+
+        if rows:
+            df_export = pd.DataFrame(rows)
+            csv_bytes = df_export.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar equipos (CSV)", data=csv_bytes, file_name="equipos.csv", mime="text/csv")
+
+            # Texto legible para copiar
+            txt = []
+            for t_idx, equipo in enumerate(equipos, start=1):
+                txt.append(f"Equipo {t_idx}:\n")
+                for p in equipo:
+                    txt.append(f" - {p.get('Gamertag','')} | Nvl {p.get('Nivel',0)} | KD {p.get('K/D',0.0)}\n")
+                txt.append("\n")
+            if reservas:
+                txt.append("Reservas:\n")
+                for p in reservas:
+                    txt.append(f" - {p.get('Gamertag','')}\n")
+
+            equipos_text = ''.join(txt)
+
+            # Componente para copiar al portapapeles
+            copy_html = f"""
+            <button id='copy'>Copiar equipos</button>
+            <textarea id='t' style='display:none'>{equipos_text}</textarea>
+            <script>
+            const btn = document.getElementById('copy');
+            btn.onclick = () => {{ navigator.clipboard.writeText(document.getElementById('t').value).then(()=>{{alert('Copiado al portapapeles')}}).catch(()=>{{alert('Falló copiar')}}); }}
+            </script>
+            """
+            components.html(copy_html)
