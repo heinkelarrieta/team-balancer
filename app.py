@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import os
 import tempfile
-from typing import List, Dict, Any, cast
+from typing import List, Dict, Any, cast, Optional, Sequence
 
 # --- BLOQUE DE BASE DE DATOS ---
 DB_FILE = "jugadores_db.csv"
 
 
-def _sanitizar_nombre(nombre: str) -> str:
+def _sanitizar_nombre(nombre: Optional[str]) -> str:
     """Normaliza el gamertag: trim, colapsa espacios y limita longitud."""
     if not isinstance(nombre, str):
         return ""
@@ -18,7 +18,7 @@ def _sanitizar_nombre(nombre: str) -> str:
     return s[:48]
 
 
-def _jugador_existe(lista: List[Dict[str, Any]], gamertag: str) -> bool:
+def _jugador_existe(lista: Sequence[Dict[str, Any]], gamertag: str) -> bool:
     """Comprueba existencia por gamertag (case-insensitive)."""
     if not gamertag:
         return False
@@ -110,12 +110,12 @@ with st.sidebar:
         ratio = st.number_input("K/D Ratio", min_value=0.0, max_value=10.0, value=1.0, step=0.1)
 
     if st.button("➕ Agregar Jugador", use_container_width=True):
-        nombre_limpio = _sanitizar_nombre(nombre)
+        nombre_limpio = _sanitizar_nombre(nombre or "")
 
         # Validaciones básicas
         if not nombre_limpio:
             st.error("⚠️ El gamertag está vacío o no es válido.")
-        elif _jugador_existe(st.session_state.jugadores, nombre_limpio):
+        elif _jugador_existe(cast(Sequence[Dict[str, Any]], st.session_state.jugadores), nombre_limpio):
             st.error("⚠️ Ya existe un jugador con ese gamertag.")
         elif not (0 <= nivel <= 350):
             st.error("⚠️ El nivel debe estar entre 0 y 350.")
@@ -131,7 +131,7 @@ with st.sidebar:
                 "K/D": float(ratio),
                 "Score": round(score, 1)
             }
-            st.session_state.jugadores.append(cast(Dict[str, Any], nuevo_jugador))
+            st.session_state.jugadores.append(cast(Any, nuevo_jugador))
             # Persistir al disco
             guardar_datos(st.session_state.jugadores)
             st.success(f"✅ {nombre_limpio} agregado")
@@ -176,10 +176,10 @@ if len(st.session_state.jugadores) > 0:
                     st.session_state.jugadores.pop(idx)
                     guardar_datos(st.session_state.jugadores)
                     st.success("Jugador eliminado")
-                    st.experimental_rerun()
+                    getattr(st, "experimental_rerun", lambda: None)()
 
                 if btn_save:
-                    nombre_limpio = _sanitizar_nombre(nuevo_nombre)
+                    nombre_limpio = _sanitizar_nombre(nuevo_nombre or "")
                     # Validaciones similares a agregar
                     if not nombre_limpio:
                         st.error("⚠️ El gamertag está vacío o no es válido.")
@@ -197,10 +197,10 @@ if len(st.session_state.jugadores) > 0:
                             'K/D': float(nuevo_kd),
                             'Score': round(score, 1)
                         }
-                        st.session_state.jugadores[idx] = cast(Dict[str, Any], actualizado)
+                        st.session_state.jugadores[idx] = cast(Any, actualizado)
                         guardar_datos(st.session_state.jugadores)
                         st.success("Cambios guardados")
-                        st.experimental_rerun()
+                        getattr(st, "experimental_rerun", lambda: None)()
 else:
     st.info("👈 Agrega jugadores desde el panel lateral para comenzar.")
 
