@@ -1,5 +1,21 @@
 import streamlit as st
 import pandas as pd
+import os
+
+# --- BLOQUE DE BASE DE DATOS ---
+DB_FILE = "jugadores_db.csv"
+
+def cargar_datos():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE).to_dict(orient="records")
+    return []
+
+def guardar_datos(lista_jugadores):
+    pd.DataFrame(lista_jugadores).to_csv(DB_FILE, index=False)
+
+# Reemplaza tu línea de "if 'jugadores' not in st.session_state..." por esta:
+if 'jugadores' not in st.session_state:
+    st.session_state.jugadores = cargar_datos()
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -42,6 +58,8 @@ with st.sidebar:
                 "Score": round(score, 1)
             }
             st.session_state.jugadores.append(nuevo_jugador)
+            # Persistir al disco
+            guardar_datos(st.session_state.jugadores)
             st.success(f"✅ {nombre} agregado")
         else:
             st.error("⚠️ Falta el nombre")
@@ -49,6 +67,8 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🗑️ Borrar Todos", type="primary"):
         st.session_state.jugadores = []
+        # Persistir borrado
+        guardar_datos(st.session_state.jugadores)
         st.rerun()
 
 # --- ÁREA PRINCIPAL ---
