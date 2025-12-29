@@ -78,3 +78,18 @@ python -m streamlit run app.py
 La aplicación usa SQLite (`jugadores.db`) como backend de persistencia. El módulo `core_db.py` inicializa la base de datos, ejecuta lecturas/escrituras transaccionales y gestiona backups rotativos según `MAX_BACKUPS`.
 
 Si necesitas ayuda con migraciones de esquema, exportaciones o copias de seguridad remotas, puedo añadir utilidades o scripts específicos para tu flujo.
+
+## Ejecutar la imagen Docker localmente
+Construir y ejecutar la imagen localmente permite probar el despliegue que utilizará CI.
+
+Comandos de ejemplo (PowerShell):
+```powershell
+docker build -t team-balancer:local .
+docker run --rm -p 8501:8501 team-balancer:local
+```
+
+Luego abre http://localhost:8501 en el navegador.
+
+Si el puerto `8501` ya está en uso, cambia el mapeo de puertos, por ejemplo `-p 8502:8501`.
+
+Nota: el `Dockerfile` instala solo las dependencias de runtime listadas en `requirements.txt`. Las herramientas de desarrollo están en `requirements-dev.txt`.
