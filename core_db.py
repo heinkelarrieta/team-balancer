@@ -5,6 +5,13 @@ import datetime
 import glob
 from typing import List, Dict, Any, Sequence, Hashable
 import pandas as pd
+import logging
+
+logger = logging.getLogger("team_balancer.core_db")
+try:
+    MAX_BACKUPS = max(1, int(os.getenv("MAX_BACKUPS", "5")))
+except Exception:
+    MAX_BACKUPS = 5
 
 DB_SQLITE = "jugadores.db"
 
@@ -27,8 +34,8 @@ def init_db(db_path: str = DB_SQLITE) -> None:
     # Mejorar concurrencia mediante WAL
     try:
         c.execute("PRAGMA journal_mode=WAL;")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Error al configurar WAL: %s", e)
     conn.commit()
     conn.close()
 
@@ -68,18 +75,17 @@ def guardar_datos_db(lista_jugadores: Sequence[Dict[Hashable, Any]], db_path: st
             shutil.copy2(db_path, backup_name)
             # Mantener solo los N backups más recientes
             try:
-                max_keep = 5
                 pattern = f"{db_path}.bak.*"
                 backups = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-                for old in backups[max_keep:]:
+                for old in backups[MAX_BACKUPS:]:
                     try:
                         os.remove(old)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-    except Exception:
-        pass
+                    except Exception as e:
+                        logger.debug("No se pudo borrar backup antiguo %s: %s", old, e)
+            except Exception as e:
+                logger.exception("Error gestionando backups: %s", e)
+    except Exception as e:
+        logger.exception("Error creando backup del DB: %s", e)
 
     # Usar transacción explícita con timeout para evitar race conditions
     conn = sqlite3.connect(db_path, timeout=30)
@@ -96,6 +102,9 @@ def guardar_datos_db(lista_jugadores: Sequence[Dict[Hashable, Any]], db_path: st
                 (gt, int(p.get('Nivel', 0)), float(p.get('K/D', 0.0)), float(p.get('Score', 0.0)))
             )
         conn.commit()
+    except Exception as e:
+        logger.exception("Error guardando datos en DB: %s", e)
+        raise
     finally:
         conn.close()
 

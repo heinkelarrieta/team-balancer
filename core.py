@@ -9,6 +9,13 @@ import glob
 from typing import List, Dict, Any, Tuple, Sequence, cast
 import streamlit as st
 from filelock import FileLock, Timeout
+import logging
+
+logger = logging.getLogger("team_balancer.core")
+try:
+    MAX_BACKUPS = max(1, int(os.getenv("MAX_BACKUPS", "5")))
+except Exception:
+    MAX_BACKUPS = 5
 
 # --- CONSTANTES Y TIPOS ---
 DB_FILE = "jugadores_db.csv"
@@ -51,6 +58,7 @@ def cargar_datos() -> List[Player]:
         with FileLock(lock_path, timeout=5):
             df = pd.read_csv(DB_FILE)
     except Exception as e:
+        logger.warning("No se pudo leer %s: %s", DB_FILE, e)
         st.warning(f"No se pudo leer {DB_FILE}: {e}")
         return []
 
@@ -95,28 +103,30 @@ def guardar_datos(lista_jugadores: List[Player]) -> None:
                     try:
                         shutil.copy2(DB_FILE, backup_name)
                     except Exception:
-                        pass
+                        logger.debug("No se pudo crear backup %s", backup_name, exc_info=True)
 
                 # Reemplazar de forma atómica
                 os.replace(tmp_path, DB_FILE)
 
                 # Limpiar backups antiguos (mantener N recientes)
                 try:
-                    max_keep = 5
                     pattern = f"{DB_FILE}.bak.*"
                     backups = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-                    for old in backups[max_keep:]:
+                    for old in backups[MAX_BACKUPS:]:
                         try:
                             os.remove(old)
                         except Exception:
-                            pass
-                except Exception:
-                    pass
+                            logger.debug("No se pudo borrar backup antiguo %s", old, exc_info=True)
+                except Exception as e:
+                    logger.exception("Error gestionando backups para %s: %s", DB_FILE, e)
         except Timeout:
+            logger.warning("Timeout al adquirir lock para %s", DB_FILE)
             st.warning(f"No se pudo adquirir lock para {DB_FILE}; inténtalo de nuevo más tarde.")
         except Exception as e:
+            logger.exception("Error guardando %s: %s", DB_FILE, e)
             st.warning(f"Error guardando {DB_FILE}: {e}")
     except Exception as e:
+        logger.exception("No se pudo guardar %s: %s", DB_FILE, e)
         st.warning(f"No se pudo guardar {DB_FILE}: {e}")
 
 

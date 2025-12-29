@@ -1,4 +1,5 @@
 import os
+import logging
 import streamlit as st
 import pandas as pd
 from typing import List, Dict, Any, cast, Sequence, Hashable
@@ -14,6 +15,23 @@ from core import (
     balancear_equipos_greedy_swaps,
 )
 from core_db import init_db, cargar_datos_db, guardar_datos_db
+
+# Configurar logging desde variables de entorno
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logger = logging.getLogger("team_balancer")
+
+# Inicializar Sentry si está configurado
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    try:
+        import importlib
+
+        sentry_sdk = importlib.import_module("sentry_sdk")
+        sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")))
+        logger.info("Sentry inicializado")
+    except Exception:
+        logger.exception("No se pudo inicializar Sentry")
 
 
 # Backend por defecto: usar SQLite si existe el archivo, sino CSV
