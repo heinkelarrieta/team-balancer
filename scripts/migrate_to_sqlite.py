@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Script simple para migrar `jugadores_db.csv` a `jugadores.db` (SQLite).
+"""Script LEGACY para migrar `jugadores_db.csv` a `jugadores.db` (SQLite).
+
+Esta utilidad se mantiene por compatibilidad para entornos que aún disponen
+de un CSV histórico. Su uso está desaconsejado para flujos nuevos; en su lugar
+usar operaciones directas sobre SQLite o herramientas de ETL.
 
 Uso:
     python scripts/migrate_to_sqlite.py --csv path/to/jugadores_db.csv --db path/to/jugadores.db
@@ -17,9 +21,9 @@ def main():
 
     try:
         n = migrate_csv_to_sqlite(args.csv, args.db, backup=args.backup)
-        print(f'Migradas {n} filas desde {args.csv} → {args.db}')
+        print(f'Migradas {n} filas desde {args.csv} → {args.db} (legacy)')
     except Exception as e:
-        print(f'Error migrando: {e}')
+        print(f'Error migrando (legacy): {e}')
 
 
 if __name__ == '__main__':

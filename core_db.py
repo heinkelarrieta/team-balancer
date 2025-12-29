@@ -112,10 +112,15 @@ def guardar_datos_db(lista_jugadores: Sequence[Dict[Hashable, Any]], db_path: st
 def migrate_csv_to_sqlite(csv_path: str = 'jugadores_db.csv', db_path: str = DB_SQLITE, backup: bool = True) -> int:
     """Migra datos desde un CSV a SQLite.
 
+    Nota: función legacy para soportar importación desde CSV antiguos.
+    Esta utilidad se mantiene por compatibilidad, pero su uso está desaconsejado
+    para flujos de producción. Preferir operaciones directas sobre SQLite.
+
     - Valida que el CSV tenga las columnas requeridas.
     - Opcionalmente guarda una copia de seguridad del DB existente.
     - Retorna el número de filas insertadas.
     """
+    logger.warning("Ejecutando función legacy migrate_csv_to_sqlite. Esta funcionalidad está en modo 'legacy'.")
     if not os.path.exists(csv_path):
         return 0
     df = pd.read_csv(csv_path)

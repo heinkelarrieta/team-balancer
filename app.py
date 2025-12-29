@@ -12,7 +12,7 @@ from core import (
     _jugador_existe,
     balancear_equipos_greedy_swaps,
 )
-from core_db import init_db, cargar_datos_db, guardar_datos_db, migrate_csv_to_sqlite, DB_SQLITE
+from core_db import init_db, cargar_datos_db, guardar_datos_db, DB_SQLITE
 
 # Configurar logging desde variables de entorno
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -32,13 +32,6 @@ if SENTRY_DSN:
         logger.exception("No se pudo inicializar Sentry")
 
 
-# Uso definitivo de SQLite como backend. Si existe un CSV histórico, migrar automáticamente.
-if not os.path.exists(DB_SQLITE) and os.path.exists('jugadores_db.csv'):
-    try:
-        migrate_csv_to_sqlite('jugadores_db.csv', DB_SQLITE, backup=True)
-    except Exception:
-        logging.getLogger("team_balancer").exception("Error migrando CSV a SQLite")
-
 init_db()
 
 
@@ -48,6 +41,42 @@ def load_players_from_db() -> List[Dict[str, Any]]:
 
 def save_players_to_db(lista: Sequence[Dict[str, Any]]) -> None:
     guardar_datos_db(cast(Sequence[Dict[Hashable, Any]], list(lista)))
+
+
+# Callbacks para botones: usan Gamertag como identificador para evitar problemas
+def _delete_player_by_gamertag(gamertag: str) -> None:
+    gt = str(gamertag or "").casefold()
+    st.session_state.jugadores = [j for j in st.session_state.jugadores if str(j.get('Gamertag','')).casefold() != gt]
+    save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
+    # Try to trigger a rerun if available (some streamlit versions/types may not expose experimental_rerun)
+    try:
+        getattr(st, "experimental_rerun", lambda: None)()
+    except Exception:
+        pass
+
+
+def _save_player_from_keys(original_gt: str, name_key: str, nivel_key: str, kd_key: str) -> None:
+    nombre = st.session_state.get(name_key, "")
+    nivel = st.session_state.get(nivel_key, 0)
+    kd = st.session_state.get(kd_key, 0.0)
+    nombre_limpio = _sanitizar_nombre(nombre or "")
+    # Buscar por gamertag original (case-insensitive)
+    for i, j in enumerate(list(st.session_state.jugadores)):
+        if str(j.get('Gamertag','')).casefold() == str(original_gt or '').casefold():
+            score = (float(kd) * 100) + (int(nivel) * 0.2)
+            actualizado: Dict[str, Any] = {
+                'Gamertag': nombre_limpio,
+                'Nivel': int(nivel),
+                'K/D': float(kd),
+                'Score': round(score, 1)
+            }
+            st.session_state.jugadores[i] = cast(Any, actualizado)
+            save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
+            break
+    try:
+        getattr(st, "experimental_rerun", lambda: None)()
+    except Exception:
+        pass
 
 
 # Inicializar la lista de jugadores en session state
@@ -74,41 +103,10 @@ Toma en cuenta el **K/D Ratio** (habilidad) y el **Nivel** (experiencia).
 
 # --- BARRA LATERAL (ENTRADA DE DATOS) ---
 with st.sidebar:
-    # Importar desde CSV
-    st.markdown("### 📥 Importar jugadores")
-    uploaded = st.file_uploader("Subir CSV de jugadores", type=["csv"], help="CSV con columnas: Gamertag,Nivel,K/D,Score")
-    import_mode = st.radio("Modo de importación:", ["Reemplazar","Añadir"], index=0)
-    if uploaded is not None:
-        try:
-            df_up = pd.read_csv(uploaded)
-            expected = {"Gamertag", "Nivel", "K/D", "Score"}
-            if not expected.issubset(set(df_up.columns)):
-                st.error(f"CSV no contiene columnas requeridas: {expected}")
-            else:
-                # Forzar tipos
-                df_up["Nivel"] = pd.to_numeric(df_up["Nivel"], errors="coerce").fillna(0).astype(int)
-                df_up["K/D"] = pd.to_numeric(df_up["K/D"], errors="coerce").fillna(0.0).astype(float)
-                df_up["Score"] = pd.to_numeric(df_up["Score"], errors="coerce").fillna(0.0).astype(float)
 
-                lista_nueva = df_up.to_dict(orient="records")
-                if import_mode == "Reemplazar":
-                    st.session_state.jugadores = lista_nueva
-                else:
-                    # Añadir evitando duplicados por Gamertag
-                    existing = {j.get('Gamertag','').casefold() for j in st.session_state.jugadores}
-                    for j in lista_nueva:
-                        gt = str(j.get('Gamertag','')).casefold()
-                        if gt and gt not in existing:
-                            st.session_state.jugadores.append(cast(Dict[str, Any], j))
-                            existing.add(gt)
 
-                # Persistir en SQLite
-                save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
-                st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
-        except Exception as e:
-            st.error(f"Error al procesar CSV: {e}")
-    st.markdown("---")
-    st.header("➕ Agregar Jugador")
+# ---Agregar nuevo jugador manualmente----
+    st.header("Agregar Jugador")
     nombre = st.text_input("Gamertag (Nombre)")
     col1, col2 = st.columns(2)
     with col1:
@@ -142,17 +140,52 @@ with st.sidebar:
             # Persistir en SQLite
             save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
             st.success(f"✅ {nombre_limpio} agregado")
-    if st.button("🗑️ Borrar Todos", type="primary"):
+    
+    if st.button("🗑️ Borrar Todos", type="primary" ):
         st.session_state.jugadores = cast(List[Dict[str, Any]], [])
         # Persistir borrado en SQLite
         save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
         st.rerun()
-
-st.header("📝 Registro de Jugador")
+#--- Registro de jugador ---
+    st.header("📝 Registro de Jugador")
 st.markdown("---")
 
-
 # --- ÁREA PRINCIPAL ---
+
+# Importador legacy (CSV) — desaconsejado
+with st.expander("📥 Importar jugadores (legacy CSV) — desaconsejado", expanded=False):
+    st.warning("La importación desde CSV es una funcionalidad legacy. Se recomienda usar la UI para añadir jugadores o APIs hacia SQLite.")
+    uploaded = st.file_uploader("Subir CSV de jugadores (legacy)", type=["csv"], help="CSV con columnas: Gamertag,Nivel,K/D,Score")
+    import_mode = st.radio("Modo de importación:", ["Reemplazar","Añadir"], index=0)
+    if uploaded is not None:
+        try:
+            df_up = pd.read_csv(uploaded)
+            expected = {"Gamertag", "Nivel", "K/D", "Score"}
+            if not expected.issubset(set(df_up.columns)):
+                st.error(f"CSV no contiene columnas requeridas: {expected}")
+            else:
+                # Forzar tipos
+                df_up["Nivel"] = pd.to_numeric(df_up["Nivel"], errors="coerce").fillna(0).astype(int)
+                df_up["K/D"] = pd.to_numeric(df_up["K/D"], errors="coerce").fillna(0.0).astype(float)
+                df_up["Score"] = pd.to_numeric(df_up["Score"], errors="coerce").fillna(0.0).astype(float)
+
+                lista_nueva = df_up.to_dict(orient="records")
+                if import_mode == "Reemplazar":
+                    st.session_state.jugadores = lista_nueva
+                else:
+                    # Añadir evitando duplicados por Gamertag
+                    existing = {j.get('Gamertag','').casefold() for j in st.session_state.jugadores}
+                    for j in lista_nueva:
+                        gt = str(j.get('Gamertag','')).casefold()
+                        if gt and gt not in existing:
+                            st.session_state.jugadores.append(cast(Dict[str, Any], j))
+                            existing.add(gt)
+
+                # Persistir en SQLite
+                save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
+                st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
+        except Exception as e:
+            st.error(f"Error al procesar CSV: {e}")
 
 # 1. Mostrar lista de jugadores actual
 st.subheader(f"👥 Jugadores en Sala ({len(st.session_state.jugadores)})")
@@ -178,38 +211,15 @@ if len(st.session_state.jugadores) > 0:
                 with c3:
                     nuevo_kd = st.number_input("K/D", min_value=0.0, max_value=10.0, value=float(jugador.get('K/D',0.0)), step=0.1, key=f"kd_{idx}")
                 with c4:
-                    btn_save = st.button("Guardar", key=f"save_{idx}")
-                    btn_del = st.button("Eliminar", key=f"del_{idx}")
+                    # Usar Gamertag como identificador único para callbacks
+                    orig_gt = str(jugador.get('Gamertag', ''))
+                    save_key = f"save_{orig_gt}_{idx}"
+                    del_key = f"del_{orig_gt}_{idx}"
 
-                if btn_del:
-                    st.session_state.jugadores.pop(idx)
-                    save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
-                    st.success("Jugador eliminado")
-                    getattr(st, "experimental_rerun", lambda: None)()
-
-                if btn_save:
-                    nombre_limpio = _sanitizar_nombre(nuevo_nombre or "")
-                    # Validaciones similares a agregar
-                    if not nombre_limpio:
-                        st.error("⚠️ El gamertag está vacío o no es válido.")
-                    elif any((j.get('Gamertag','').casefold() == nombre_limpio.casefold()) and i != idx for i, j in enumerate(st.session_state.jugadores)):
-                        st.error("⚠️ Ya existe otro jugador con ese gamertag.")
-                    elif not (0 <= nuevo_nivel <= 350):
-                        st.error("⚠️ El nivel debe estar entre 0 y 350.")
-                    elif not (0.0 <= nuevo_kd <= 10.0):
-                        st.error("⚠️ El K/D debe estar entre 0.0 y 10.0.")
-                    else:
-                        score = (float(nuevo_kd) * 100) + (int(nuevo_nivel) * 0.2)
-                        actualizado: Dict[str, Any] = {
-                            'Gamertag': nombre_limpio,
-                            'Nivel': int(nuevo_nivel),
-                            'K/D': float(nuevo_kd),
-                            'Score': round(score, 1)
-                        }
-                        st.session_state.jugadores[idx] = cast(Any, actualizado)
-                        save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
-                        st.success("Cambios guardados")
-                        getattr(st, "experimental_rerun", lambda: None)()
+                    st.button("Guardar", key=save_key, type="primary",
+                              on_click=_save_player_from_keys, args=(orig_gt, f"name_{idx}", f"nivel_{idx}", f"kd_{idx}"))
+                    st.button("Eliminar", key=del_key,
+                              on_click=_delete_player_by_gamertag, args=(orig_gt,))
 else:
     st.info("👈 Agrega jugadores desde el panel lateral para comenzar.")
 
