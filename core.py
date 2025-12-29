@@ -1,24 +1,11 @@
-import pandas as pd
-import os
-import tempfile
 import random
 import statistics
-import shutil
-import datetime
-import glob
-from typing import List, Dict, Any, Tuple, Sequence, cast
-import streamlit as st
-from filelock import FileLock, Timeout
 import logging
+from typing import List, Dict, Any, Tuple, Sequence
 
 logger = logging.getLogger("team_balancer.core")
-try:
-    MAX_BACKUPS = max(1, int(os.getenv("MAX_BACKUPS", "5")))
-except Exception:
-    MAX_BACKUPS = 5
 
-# --- CONSTANTES Y TIPOS ---
-DB_FILE = "jugadores_db.csv"
+# Tipo para un jugador
 Player = Dict[str, Any]
 
 
@@ -43,91 +30,8 @@ def _jugador_existe(lista: Sequence[Player], gamertag: str) -> bool:
     return any(str(j.get("Gamertag", "")).casefold() == gt for j in lista)
 
 
-def cargar_datos() -> List[Player]:
-    """Carga la lista de jugadores desde `DB_FILE`.
-
-    - Maneja errores de lectura y avisos mediante Streamlit.
-    - Valida que el CSV contenga las columnas esperadas.
-    - Normaliza tipos para `Nivel`, `K/D` y `Score` cuando sea posible.
-    """
-    if not os.path.exists(DB_FILE):
-        return []
-
-    lock_path = f"{DB_FILE}.lock"
-    try:
-        with FileLock(lock_path, timeout=5):
-            df = pd.read_csv(DB_FILE)
-    except Exception as e:
-        logger.warning("No se pudo leer %s: %s", DB_FILE, e)
-        st.warning(f"No se pudo leer {DB_FILE}: {e}")
-        return []
-
-    expected = {"Gamertag", "Nivel", "K/D", "Score"}
-    if not expected.issubset(set(df.columns)):
-        st.warning(f"Archivo {DB_FILE} no contiene las columnas esperadas: {expected}")
-        return []
-
-    try:
-        df["Nivel"] = pd.to_numeric(df["Nivel"], errors="coerce").fillna(0).astype(int)
-        df["K/D"] = pd.to_numeric(df["K/D"], errors="coerce").fillna(0.0).astype(float)
-        df["Score"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0.0).astype(float)
-    except Exception:
-        pass
-
-    return cast(List[Player], df.to_dict(orient="records"))
-
-
-def guardar_datos(lista_jugadores: List[Player]) -> None:
-    """Guarda la lista de jugadores en `DB_FILE` de forma atómica.
-
-    - Escribe en un archivo temporal y lo reemplaza para evitar corrupciones.
-    - Si ocurre un error, muestra un aviso en Streamlit.
-    """
-    try:
-        df = pd.DataFrame(lista_jugadores)
-        dirpath = os.path.dirname(DB_FILE) or "."
-        os.makedirs(dirpath, exist_ok=True)
-
-        lock_path = f"{DB_FILE}.lock"
-        try:
-            with FileLock(lock_path, timeout=10):
-                # Escribir a archivo temporal
-                with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=dirpath, newline="", suffix=".csv") as tmp:
-                    tmp_path = tmp.name
-                    df.to_csv(tmp_path, index=False)
-
-                # Si existe el archivo objetivo, crear copia de seguridad timestamped antes de reemplazar
-                if os.path.exists(DB_FILE):
-                    ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-                    backup_name = f"{DB_FILE}.bak.{ts}"
-                    try:
-                        shutil.copy2(DB_FILE, backup_name)
-                    except Exception:
-                        logger.debug("No se pudo crear backup %s", backup_name, exc_info=True)
-
-                # Reemplazar de forma atómica
-                os.replace(tmp_path, DB_FILE)
-
-                # Limpiar backups antiguos (mantener N recientes)
-                try:
-                    pattern = f"{DB_FILE}.bak.*"
-                    backups = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-                    for old in backups[MAX_BACKUPS:]:
-                        try:
-                            os.remove(old)
-                        except Exception:
-                            logger.debug("No se pudo borrar backup antiguo %s", old, exc_info=True)
-                except Exception as e:
-                    logger.exception("Error gestionando backups para %s: %s", DB_FILE, e)
-        except Timeout:
-            logger.warning("Timeout al adquirir lock para %s", DB_FILE)
-            st.warning(f"No se pudo adquirir lock para {DB_FILE}; inténtalo de nuevo más tarde.")
-        except Exception as e:
-            logger.exception("Error guardando %s: %s", DB_FILE, e)
-            st.warning(f"Error guardando {DB_FILE}: {e}")
-    except Exception as e:
-        logger.exception("No se pudo guardar %s: %s", DB_FILE, e)
-        st.warning(f"No se pudo guardar {DB_FILE}: {e}")
+# Las funciones de I/O basadas en CSV fueron eliminadas: la persistencia ahora es SQLite.
+# Mantener funciones utilitarias y el algoritmo de balanceo.
 
 
 def balancear_equipos_greedy_swaps(lista_jugadores: Sequence[Player], n_jugadores: int, max_iters: int = 2000) -> Tuple[List[List[Player]], List[Player]]:
