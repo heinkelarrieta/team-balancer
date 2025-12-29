@@ -70,9 +70,45 @@ st.markdown("""
 Esta herramienta crea equipos balanceados usando el algoritmo **"Snake Draft Ponderado"**.
 Toma en cuenta el **K/D Ratio** (habilidad) y el **Nivel** (experiencia).
 """)
+# ---barra superior
 
 # --- BARRA LATERAL (ENTRADA DE DATOS) ---
 with st.sidebar:
+    # Importar desde CSV
+    st.markdown("### 📥 Importar jugadores")
+    uploaded = st.file_uploader("Subir CSV de jugadores", type=["csv"], help="CSV con columnas: Gamertag,Nivel,K/D,Score")
+    import_mode = st.radio("Modo de importación:", ["Reemplazar","Añadir"], index=0)
+    if uploaded is not None:
+        try:
+            df_up = pd.read_csv(uploaded)
+            expected = {"Gamertag", "Nivel", "K/D", "Score"}
+            if not expected.issubset(set(df_up.columns)):
+                st.error(f"CSV no contiene columnas requeridas: {expected}")
+            else:
+                # Forzar tipos
+                df_up["Nivel"] = pd.to_numeric(df_up["Nivel"], errors="coerce").fillna(0).astype(int)
+                df_up["K/D"] = pd.to_numeric(df_up["K/D"], errors="coerce").fillna(0.0).astype(float)
+                df_up["Score"] = pd.to_numeric(df_up["Score"], errors="coerce").fillna(0.0).astype(float)
+
+                lista_nueva = df_up.to_dict(orient="records")
+                if import_mode == "Reemplazar":
+                    st.session_state.jugadores = lista_nueva
+                else:
+                    # Añadir evitando duplicados por Gamertag
+                    existing = {j.get('Gamertag','').casefold() for j in st.session_state.jugadores}
+                    for j in lista_nueva:
+                        gt = str(j.get('Gamertag','')).casefold()
+                        if gt and gt not in existing:
+                            st.session_state.jugadores.append(cast(Dict[str, Any], j))
+                            existing.add(gt)
+
+                # Persistir en SQLite
+                save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
+                st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
+        except Exception as e:
+            st.error(f"Error al procesar CSV: {e}")
+    st.markdown("---")
+    st.header("➕ Agregar Jugador")
     nombre = st.text_input("Gamertag (Nombre)")
     col1, col2 = st.columns(2)
     with col1:
@@ -115,41 +151,6 @@ with st.sidebar:
 st.header("📝 Registro de Jugador")
 st.markdown("---")
 
-
-# Importar desde CSV
-
-st.markdown("### 📥 Importar jugadores")
-uploaded = st.file_uploader("Subir CSV de jugadores", type=["csv"], help="CSV con columnas: Gamertag,Nivel,K/D,Score")
-import_mode = st.radio("Modo de importación:", ["Reemplazar","Añadir"], index=0)
-if uploaded is not None:
-    try:
-        df_up = pd.read_csv(uploaded)
-        expected = {"Gamertag", "Nivel", "K/D", "Score"}
-        if not expected.issubset(set(df_up.columns)):
-            st.error(f"CSV no contiene columnas requeridas: {expected}")
-        else:
-            # Forzar tipos
-            df_up["Nivel"] = pd.to_numeric(df_up["Nivel"], errors="coerce").fillna(0).astype(int)
-            df_up["K/D"] = pd.to_numeric(df_up["K/D"], errors="coerce").fillna(0.0).astype(float)
-            df_up["Score"] = pd.to_numeric(df_up["Score"], errors="coerce").fillna(0.0).astype(float)
-
-            lista_nueva = df_up.to_dict(orient="records")
-            if import_mode == "Reemplazar":
-                st.session_state.jugadores = lista_nueva
-            else:
-                # Añadir evitando duplicados por Gamertag
-                existing = {j.get('Gamertag','').casefold() for j in st.session_state.jugadores}
-                for j in lista_nueva:
-                    gt = str(j.get('Gamertag','')).casefold()
-                    if gt and gt not in existing:
-                        st.session_state.jugadores.append(cast(Dict[str, Any], j))
-                        existing.add(gt)
-
-            # Persistir en SQLite
-            save_players_to_db(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
-            st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
-    except Exception as e:
-        st.error(f"Error al procesar CSV: {e}")
 
 # --- ÁREA PRINCIPAL ---
 
