@@ -29,7 +29,7 @@ python -m pytest -q
 
 ## Variables de entorno importantes
 
-- `MAX_BACKUPS` (opcional): controla cuántas copias de seguridad antiguas se mantienen para los ficheros de persistencia (CSV y SQLite). Valor por defecto: `5`.
+- `MAX_BACKUPS` (opcional): controla cuántas copias de seguridad antiguas se mantienen para el fichero de persistencia SQLite. Valor por defecto: `5`.
 - `LOG_LEVEL` (opcional): nivel de logging para la app. Valores típicos: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Valor por defecto: `INFO`.
 - `SENTRY_DSN` (opcional): si lo configuras, la app inicializará `sentry-sdk` para reportar errores (usa `SENTRY_TRACES_SAMPLE_RATE` para controlar sampling).
 
@@ -73,18 +73,8 @@ python -m streamlit run app.py
 
 ## Notas
 - `requirements.txt` contiene versiones pineadas para reproducibilidad.
-- Si deseas migrar la persistencia a SQLite o añadir CI, puedo ayudarte a añadir esas mejoras.
 
-## Migración a SQLite
-La carpeta incluye utilidades para migrar el `jugadores_db.csv` a una base de datos SQLite (`jugadores.db`).
+## Persistencia y migraciones
+La aplicación usa SQLite (`jugadores.db`) como backend de persistencia. El módulo `core_db.py` inicializa la base de datos, ejecuta lecturas/escrituras transaccionales y gestiona backups rotativos según `MAX_BACKUPS`.
 
-Para migrar desde PowerShell (con el venv activado):
-```powershell
-python scripts\migrate_to_sqlite.py --csv jugadores_db.csv --db jugadores.db
-```
-
-Funciones clave:
-- `core_db.py`: inicializa la DB, carga/guarda jugadores y realiza la migración.
-- `scripts/migrate_to_sqlite.py`: pequeño CLI que ejecuta la migración y hace backup del DB existente.
-
-Después de migrar puedes cambiar la persistencia de la app para usar SQLite en lugar del CSV (puedo ayudarte con ese cambio si quieres).
+Si necesitas ayuda con migraciones de esquema, exportaciones o copias de seguridad remotas, puedo añadir utilidades o scripts específicos para tu flujo.
