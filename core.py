@@ -8,6 +8,7 @@ import datetime
 import glob
 from typing import List, Dict, Any, Tuple, Sequence, cast
 import streamlit as st
+from filelock import FileLock, Timeout
 
 # --- CONSTANTES Y TIPOS ---
 DB_FILE = "jugadores_db.csv"
@@ -45,8 +46,10 @@ def cargar_datos() -> List[Player]:
     if not os.path.exists(DB_FILE):
         return []
 
+    lock_path = f"{DB_FILE}.lock"
     try:
-        df = pd.read_csv(DB_FILE)
+        with FileLock(lock_path, timeout=5):
+            df = pd.read_csv(DB_FILE)
     except Exception as e:
         st.warning(f"No se pudo leer {DB_FILE}: {e}")
         return []
@@ -77,36 +80,42 @@ def guardar_datos(lista_jugadores: List[Player]) -> None:
         dirpath = os.path.dirname(DB_FILE) or "."
         os.makedirs(dirpath, exist_ok=True)
 
-        # Escribir a archivo temporal
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=dirpath, newline="", suffix=".csv") as tmp:
-            tmp_path = tmp.name
-            df.to_csv(tmp_path, index=False)
-
-        # Si existe el archivo objetivo, crear copia de seguridad timestamped antes de reemplazar
-        if os.path.exists(DB_FILE):
-            ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            backup_name = f"{DB_FILE}.bak.{ts}"
-            try:
-                shutil.copy2(DB_FILE, backup_name)
-            except Exception:
-                # No criticar si el backup falla; continuamos intentando el replace
-                pass
-
-        # Reemplazar de forma atómica
-        os.replace(tmp_path, DB_FILE)
-
-        # Limpiar backups antiguos (mantener N recientes)
+        lock_path = f"{DB_FILE}.lock"
         try:
-            max_keep = 5
-            pattern = f"{DB_FILE}.bak.*"
-            backups = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-            for old in backups[max_keep:]:
+            with FileLock(lock_path, timeout=10):
+                # Escribir a archivo temporal
+                with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=dirpath, newline="", suffix=".csv") as tmp:
+                    tmp_path = tmp.name
+                    df.to_csv(tmp_path, index=False)
+
+                # Si existe el archivo objetivo, crear copia de seguridad timestamped antes de reemplazar
+                if os.path.exists(DB_FILE):
+                    ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                    backup_name = f"{DB_FILE}.bak.{ts}"
+                    try:
+                        shutil.copy2(DB_FILE, backup_name)
+                    except Exception:
+                        pass
+
+                # Reemplazar de forma atómica
+                os.replace(tmp_path, DB_FILE)
+
+                # Limpiar backups antiguos (mantener N recientes)
                 try:
-                    os.remove(old)
+                    max_keep = 5
+                    pattern = f"{DB_FILE}.bak.*"
+                    backups = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
+                    for old in backups[max_keep:]:
+                        try:
+                            os.remove(old)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
-        except Exception:
-            pass
+        except Timeout:
+            st.warning(f"No se pudo adquirir lock para {DB_FILE}; inténtalo de nuevo más tarde.")
+        except Exception as e:
+            st.warning(f"Error guardando {DB_FILE}: {e}")
     except Exception as e:
         st.warning(f"No se pudo guardar {DB_FILE}: {e}")
 

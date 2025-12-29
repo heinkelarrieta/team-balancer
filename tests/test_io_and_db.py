@@ -1,13 +1,12 @@
-import os
 import glob
-import sqlite3
 import pandas as pd
-from core import guardar_datos, cargar_datos, DB_FILE
+from typing import List, Dict, Any, Hashable, cast
+from core import guardar_datos, cargar_datos
 import core as core_mod
 import core_db
 
 
-def make_players(n=4):
+def make_players(n: int = 4) -> List[Dict[Hashable, Any]]:
     return [
         {"Gamertag": f"P{i}", "Nivel": i * 10, "K/D": 1.0 + i * 0.5, "Score": float(100 + i)}
         for i in range(n)
@@ -21,7 +20,7 @@ def test_csv_save_and_load(tmp_path):
     core_mod.DB_FILE = str(csv_path)
 
     players = make_players(3)
-    guardar_datos(players)
+    guardar_datos(cast(Any, players))
 
     loaded = cargar_datos()
     assert isinstance(loaded, list)
@@ -35,11 +34,11 @@ def test_csv_backup_rotation(tmp_path):
 
     players = make_players(1)
     # create initial file
-    guardar_datos(players)
+    guardar_datos(cast(Any, players))
     # run multiple saves to produce backups
     for i in range(7):
         players[0]['Score'] += i
-        guardar_datos(players)
+        guardar_datos(cast(Any, players))
 
     pattern = f"{core_mod.DB_FILE}.bak.*"
     backups = glob.glob(pattern)

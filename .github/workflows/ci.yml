@@ -33,3 +33,11 @@ jobs:
       - name: Run tests
         run: |
           python -m pytest -q
+
+      - name: Lint with ruff
+        run: |
+          python -m ruff check .
+
+      - name: Type-check with mypy
+        run: |
+          python -m mypy .

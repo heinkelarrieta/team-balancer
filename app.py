@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 import pandas as pd
-from typing import List, Dict, Any, cast, Optional, Sequence, Hashable
+from typing import List, Dict, Any, cast, Sequence, Hashable
 import streamlit.components.v1 as components
 import statistics
 
@@ -145,7 +145,7 @@ if uploaded is not None:
             st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
     except Exception as e:
         st.error(f"Error al procesar CSV: {e}")
-    
+
 # --- ÁREA PRINCIPAL ---
 
 # 1. Mostrar lista de jugadores actual
@@ -155,7 +155,7 @@ if len(st.session_state.jugadores) > 0:
     df = pd.DataFrame(st.session_state.jugadores)
     # Mostramos la tabla ordenada por Score para que vean quién es el "MVP" teórico
     st.dataframe(
-        df.sort_values(by="Score", ascending=False), 
+        df.sort_values(by="Score", ascending=False),
         use_container_width=True,
         hide_index=True
     )
@@ -217,13 +217,13 @@ with col_config1:
 
 with col_config2:
     st.write("") # Espacio
-    st.write("") 
+    st.write("")
     btn_generar = st.button("🎲 GENERAR EQUIPOS", type="primary", use_container_width=True)
 
 # 3. Lógica y Resultados
 if btn_generar:
     total_jugadores = len(st.session_state.jugadores)
-    
+
     if total_jugadores < n_jugadores * 2:
         st.error(f"⚠️ Necesitas al menos {n_jugadores * 2} jugadores para armar 2 equipos.")
     else:
@@ -236,7 +236,7 @@ if btn_generar:
 
         # D. Mostrar Resultados
         st.success("✅ Equipos generados exitosamente")
-        
+
         cols = st.columns(num_equipos)
         # Métricas globales de balance
         team_sums = [sum(j.get('Score', 0.0) for j in eq) for eq in equipos]
@@ -253,11 +253,11 @@ if btn_generar:
                 avg_kd = sum(j.get('K/D', 0.0) for j in equipo) / len(equipo)
             else:
                 avg_kd = 0.0
-            
+
             with col:
                 st.markdown(f"### 🛡️ Equipo {i+1}")
                 st.caption(f"Poder Total: {promedio_score:.1f} | K/D Prom: {avg_kd:.2f}")
-                
+
                 txt_equipo = ""
                 for jug in equipo:
                     txt_equipo += f"**{jug['Gamertag']}**\n\nNvl {jug['Nivel']} | KD {jug['K/D']}\n\n---\n\n"

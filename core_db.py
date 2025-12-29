@@ -12,7 +12,7 @@ DB_SQLITE = "jugadores.db"
 def init_db(db_path: str = DB_SQLITE) -> None:
     """Inicializa la base de datos SQLite y crea la tabla si no existe."""
     os.makedirs(os.path.dirname(db_path) or '.', exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
     c = conn.cursor()
     c.execute(
         """
@@ -24,6 +24,11 @@ def init_db(db_path: str = DB_SQLITE) -> None:
         )
         """
     )
+    # Mejorar concurrencia mediante WAL
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -76,18 +81,23 @@ def guardar_datos_db(lista_jugadores: Sequence[Dict[Hashable, Any]], db_path: st
     except Exception:
         pass
 
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    for p in lista_jugadores:
-        gt = str(p.get('Gamertag', '')).strip()
-        if not gt:
-            continue
-        c.execute(
-            "REPLACE INTO jugadores (Gamertag, Nivel, KD, Score) VALUES (?, ?, ?, ?)",
-            (gt, int(p.get('Nivel', 0)), float(p.get('K/D', 0.0)), float(p.get('Score', 0.0)))
-        )
-    conn.commit()
-    conn.close()
+    # Usar transacción explícita con timeout para evitar race conditions
+    conn = sqlite3.connect(db_path, timeout=30)
+    try:
+        c = conn.cursor()
+        # BEGIN IMMEDIATE para adquirir lock de escritura
+        c.execute('BEGIN IMMEDIATE')
+        for p in lista_jugadores:
+            gt = str(p.get('Gamertag', '')).strip()
+            if not gt:
+                continue
+            c.execute(
+                "REPLACE INTO jugadores (Gamertag, Nivel, KD, Score) VALUES (?, ?, ?, ?)",
+                (gt, int(p.get('Nivel', 0)), float(p.get('K/D', 0.0)), float(p.get('Score', 0.0)))
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def migrate_csv_to_sqlite(csv_path: str = 'jugadores_db.csv', db_path: str = DB_SQLITE, backup: bool = True) -> int:
