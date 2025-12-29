@@ -1,6 +1,7 @@
+import os
 import streamlit as st
 import pandas as pd
-from typing import List, Dict, Any, cast, Optional, Sequence
+from typing import List, Dict, Any, cast, Optional, Sequence, Hashable
 import streamlit.components.v1 as components
 import statistics
 
@@ -12,11 +13,35 @@ from core import (
     guardar_datos,
     balancear_equipos_greedy_swaps,
 )
+from core_db import init_db, cargar_datos_db, guardar_datos_db
 
 
-# Inicializar la lista de jugadores en el session state si no existe
-if 'jugadores' not in st.session_state:
-    st.session_state.jugadores = cast(List[Dict[str, Any]], cargar_datos())
+# Backend por defecto: usar SQLite si existe el archivo, sino CSV
+default_backend = 'sqlite' if os.path.exists('jugadores.db') else 'csv'
+if 'backend' not in st.session_state:
+    st.session_state.backend = default_backend
+
+
+def load_players_from_backend() -> List[Dict[str, Any]]:
+    if st.session_state.get('backend') == 'sqlite':
+        init_db()
+        return cast(List[Dict[str, Any]], cargar_datos_db())
+    return cast(List[Dict[str, Any]], cargar_datos())
+
+
+def save_players_to_backend(lista: Sequence[Dict[str, Any]]) -> None:
+    # Aceptar una Sequence (covariante) para evitar errores de tipo y
+    # convertir a list antes de pasar a las funciones que esperan listas concretas.
+    if st.session_state.get('backend') == 'sqlite':
+        guardar_datos_db(cast(Sequence[Dict[Hashable, Any]], list(lista)))
+    else:
+        guardar_datos(list(lista))
+
+
+# Inicializar la lista de jugadores en session state si no existe o si backend cambió
+if 'jugadores' not in st.session_state or st.session_state.get('backend_loaded') != st.session_state.get('backend'):
+    st.session_state.jugadores = load_players_from_backend()
+    st.session_state.backend_loaded = st.session_state.get('backend')
 
 
 
@@ -29,6 +54,7 @@ st.set_page_config(
 
 # --- TÍTULO Y DESCRIPCIÓN ---
 st.title("Generador de Equipos")
+st.caption(f"Persistencia: {'SQLite (jugadores.db)' if st.session_state.get('backend')=='sqlite' else 'CSV (jugadores_db.csv)'}")
 st.markdown("""
 Esta herramienta crea equipos balanceados usando el algoritmo **"Snake Draft Ponderado"**.
 Toma en cuenta el **K/D Ratio** (habilidad) y el **Nivel** (experiencia).
@@ -36,6 +62,15 @@ Toma en cuenta el **K/D Ratio** (habilidad) y el **Nivel** (experiencia).
 
 # --- BARRA LATERAL (ENTRADA DE DATOS) ---
 with st.sidebar:
+    backend_choice = st.radio("Persistencia:", ["CSV","SQLite (jugadores.db)"], index=0 if st.session_state.get('backend','csv')=='csv' else 1)
+    selected_backend = 'sqlite' if backend_choice.startswith('SQLite') else 'csv'
+    if selected_backend != st.session_state.get('backend'):
+        st.session_state.backend = selected_backend
+        st.session_state.jugadores = load_players_from_backend()
+        st.session_state.backend_loaded = selected_backend
+
+    st.markdown(f"**Persistencia actual:** { 'SQLite (jugadores.db)' if st.session_state.get('backend')=='sqlite' else 'CSV (jugadores_db.csv)'}")
+
     nombre = st.text_input("Gamertag (Nombre)")
     col1, col2 = st.columns(2)
     with col1:
@@ -66,15 +101,15 @@ with st.sidebar:
                 "Score": round(score, 1)
             }
             st.session_state.jugadores.append(cast(Any, nuevo_jugador))
-            # Persistir al disco
-            guardar_datos(cast(Any, st.session_state.jugadores))
+            # Persistir al backend seleccionado
+            save_players_to_backend(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
             st.success(f"✅ {nombre_limpio} agregado")
 
     st.markdown("---")
 if st.button("🗑️ Borrar Todos", type="primary"):
     st.session_state.jugadores = cast(List[Dict[str, Any]], [])
     # Persistir borrado
-    guardar_datos(cast(Any, st.session_state.jugadores))
+    save_players_to_backend(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
     st.rerun()
 
 # Importar desde CSV
@@ -106,7 +141,7 @@ if uploaded is not None:
                         st.session_state.jugadores.append(cast(Dict[str, Any], j))
                         existing.add(gt)
 
-            guardar_datos(cast(Any, st.session_state.jugadores))
+            save_players_to_backend(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
             st.success(f"Importadas {len(lista_nueva)} filas ({import_mode}).")
     except Exception as e:
         st.error(f"Error al procesar CSV: {e}")
@@ -142,7 +177,7 @@ if len(st.session_state.jugadores) > 0:
 
                 if btn_del:
                     st.session_state.jugadores.pop(idx)
-                    guardar_datos(cast(Any, st.session_state.jugadores))
+                    save_players_to_backend(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
                     st.success("Jugador eliminado")
                     getattr(st, "experimental_rerun", lambda: None)()
 
@@ -166,7 +201,7 @@ if len(st.session_state.jugadores) > 0:
                             'Score': round(score, 1)
                         }
                         st.session_state.jugadores[idx] = cast(Any, actualizado)
-                        guardar_datos(cast(Any, st.session_state.jugadores))
+                        save_players_to_backend(cast(Sequence[Dict[str, Any]], st.session_state.jugadores))
                         st.success("Cambios guardados")
                         getattr(st, "experimental_rerun", lambda: None)()
 else:

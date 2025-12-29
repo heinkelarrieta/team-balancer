@@ -30,3 +30,17 @@ python -m pytest -q
 ## Notas
 - `requirements.txt` contiene versiones pineadas para reproducibilidad.
 - Si deseas migrar la persistencia a SQLite o añadir CI, puedo ayudarte a añadir esas mejoras.
+
+## Migración a SQLite
+La carpeta incluye utilidades para migrar el `jugadores_db.csv` a una base de datos SQLite (`jugadores.db`).
+
+Para migrar desde PowerShell (con el venv activado):
+```powershell
+python scripts\migrate_to_sqlite.py --csv jugadores_db.csv --db jugadores.db
+```
+
+Funciones clave:
+- `core_db.py`: inicializa la DB, carga/guarda jugadores y realiza la migración.
+- `scripts/migrate_to_sqlite.py`: pequeño CLI que ejecuta la migración y hace backup del DB existente.
+
+Después de migrar puedes cambiar la persistencia de la app para usar SQLite en lugar del CSV (puedo ayudarte con ese cambio si quieres).
