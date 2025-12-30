@@ -226,45 +226,49 @@ def inject_responsive_styles() -> None:
     """
     css = """
     <style>
-    /* Contenedor superior derecho para notificaciones success */
+    /* Contenedor fijo para mensajes temporales */
     #tmpmsg_container {
         position: fixed;
-        top: 16px;
-        right: 20px;
-        z-index: 99999;
+        top: 12px;
+        right: 12px;
+        z-index: 9999;
         display: flex;
         flex-direction: column;
         gap: 8px;
-        align-items: flex-end;
         pointer-events: none;
-        max-width: 360px;
     }
+    /* Mensajes apilados (top-right) */
     .tmpmsg {
-        border-radius: 6px;
-        padding: 10px 14px;
+        pointer-events: auto;
         color: white;
-        font-weight: 500;
-        margin: 0;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif;
         font-size: 14px;
-        line-height: 1.4;
-        pointer-events: auto;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-        max-width: 100%;
+        line-height: 1.3;
+        max-width: 320px;
+        word-break: break-word;
     }
-    .tmpmsg-inline { display: block; }
-
-    /* Mobile adjustments */
-    @media (max-width: 700px) {
+    /* Mensajes inline (dentro del flujo) */
+    .tmpmsg-inline {
+        display: inline-block;
+        max-width: 100%;
+        word-break: break-word;
+    }
+    /* Ajustes para pantallas pequeñas */
+    @media (max-width: 640px) {
         #tmpmsg_container {
             right: 8px;
-            left: 8px;
-            top: 10px;
-            align-items: center;
-            max-width: calc(100% - 16px);
+            top: 8px;
+            gap: 6px;
         }
-        .tmpmsg { font-size: 13px; }
-        .stApp { padding-left: 8px !important; padding-right: 8px !important; }
+        .tmpmsg {
+            font-size: 13px;
+            padding: 6px 10px;
+            max-width: 260px;
+        }
     }
     </style>
     """
