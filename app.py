@@ -52,25 +52,57 @@ def show_temporary_message(message: str, kind: str = "success", seconds: int = 5
         bg = "#2d6a4f" if kind == "success" else "#f59f00"
         # Pila tipográfica para coincidir con Streamlit / sistema
         font_stack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif"
-        html = f"""
-        <div id='tmpmsg' style="border-radius:6px;padding:10px 14px;color:white;background:{bg};font-weight:500;margin:6px 0;font-family:{font_stack};font-size:14px;line-height:1.4;">
-            {message}
-        </div>
-        <script>
-            setTimeout(function() {{
-                var el = document.getElementById('tmpmsg');
-                if (el) el.remove();
-            }}, {seconds * 1000});
-        </script>
-        """
-        try:
-                components.html(html, height=60)
-        except Exception:
-                # Fallback a st.success si components falla
+        if kind == "success":
+            # Insertar notificación en contenedor fijo superior derecho (apilado)
+            html = f"""
+            <script>
+            (function() {{
+                try {{
+                    var cont = document.getElementById('tmpmsg_container');
+                    if (!cont) {{
+                        cont = document.createElement('div');
+                        cont.id = 'tmpmsg_container';
+                        document.body.appendChild(cont);
+                    }}
+                    var msg = document.createElement('div');
+                    msg.className = 'tmpmsg';
+                    msg.style.background = '{bg}';
+                    msg.textContent = `{message}`;
+                    cont.appendChild(msg);
+                    setTimeout(function() {{ msg.remove(); }}, {seconds * 1000});
+                }} catch(e) {{
+                    // fallback: alert
+                }}
+            }})();
+            </script>
+            """
+            try:
+                components.html(html, height=1)
+            except Exception:
                 try:
-                        st.success(message)
+                    st.success(message)
                 except Exception:
-                        pass
+                    pass
+        else:
+            # Mensajes inline (warnings/errores)
+            html = f"""
+            <div id='tmpmsg' class='tmpmsg-inline' style="border-radius:6px;padding:10px 14px;color:white;background:{bg};font-weight:500;margin:6px 0;font-family:{font_stack};font-size:14px;line-height:1.4;">
+                {message}
+            </div>
+            <script>
+                setTimeout(function() {{
+                    var el = document.getElementById('tmpmsg');
+                    if (el) el.remove();
+                }}, {seconds * 1000});
+            </script>
+            """
+            try:
+                components.html(html, height=60)
+            except Exception:
+                try:
+                    st.warning(message)
+                except Exception:
+                    pass
 
 
 # Callbacks para botones: usan Gamertag como identificador para evitar problemas
@@ -179,11 +211,70 @@ if 'jugadores' not in st.session_state:
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Team Balancer",
+    page_title="Roster Balancer",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+def inject_responsive_styles() -> None:
+    """Inyecta CSS responsivo global para mejorar render en pantallas pequeñas.
+
+    Define el contenedor `#tmpmsg_container` y la clase `.tmpmsg` usada por
+    `show_temporary_message`, además de ajustes de padding y tamaños en mobile.
+    """
+    css = """
+    <style>
+    /* Contenedor superior derecho para notificaciones success */
+    #tmpmsg_container {
+        position: fixed;
+        top: 16px;
+        right: 20px;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-end;
+        pointer-events: none;
+        max-width: 360px;
+    }
+    .tmpmsg {
+        border-radius: 6px;
+        padding: 10px 14px;
+        color: white;
+        font-weight: 500;
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif;
+        font-size: 14px;
+        line-height: 1.4;
+        pointer-events: auto;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+        max-width: 100%;
+    }
+    .tmpmsg-inline { display: block; }
+
+    /* Mobile adjustments */
+    @media (max-width: 700px) {
+        #tmpmsg_container {
+            right: 8px;
+            left: 8px;
+            top: 10px;
+            align-items: center;
+            max-width: calc(100% - 16px);
+        }
+        .tmpmsg { font-size: 13px; }
+        .stApp { padding-left: 8px !important; padding-right: 8px !important; }
+    }
+    </style>
+    """
+    try:
+        components.html(css, height=0)
+    except Exception:
+        pass
+
+# Llamar al inyectador de estilos para hacer la UI más responsive
+inject_responsive_styles()
 
 # --- TÍTULO Y DESCRIPCIÓN ---
 st.title("Generador de Equipos", text_alignment="center")
