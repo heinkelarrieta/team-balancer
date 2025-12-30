@@ -109,6 +109,30 @@ def guardar_datos_db(lista_jugadores: Sequence[Dict[Hashable, Any]], db_path: st
         conn.close()
 
 
+def delete_player_db(gamertag: str, db_path: str = DB_SQLITE) -> int:
+    """Elimina un jugador por `Gamertag` (case-insensitive).
+
+    Retorna el número de filas eliminadas.
+    """
+    if not gamertag:
+        return 0
+    init_db(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
+    try:
+        c = conn.cursor()
+        # Usar comparación case-insensitive
+        c.execute("DELETE FROM jugadores WHERE lower(Gamertag) = lower(?)", (gamertag,))
+        deleted = c.rowcount
+        conn.commit()
+        logger.debug("Eliminados %s registros para Gamertag=%s", deleted, gamertag)
+        return deleted
+    except Exception as e:
+        logger.exception("Error eliminando jugador %s: %s", gamertag, e)
+        raise
+    finally:
+        conn.close()
+
+
 def migrate_csv_to_sqlite(csv_path: str = 'jugadores_db.csv', db_path: str = DB_SQLITE, backup: bool = True) -> int:
     """Migra datos desde un CSV a SQLite.
 
